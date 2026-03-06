@@ -21,9 +21,11 @@ db.run(`
 CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT,
+    email TEXT UNIQUE,
     token TEXT UNIQUE
 )
 `);
+
 
 db.run(`
 CREATE TABLE IF NOT EXISTS api_keys (
