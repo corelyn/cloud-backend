@@ -1,4 +1,4 @@
-const fetch = require("node-fetch");
+const fetch = require("node-fetch"); // Works with node-fetch v2
 
 module.exports = (app, db) => {
   app.post("/chat/completions", async (req, res) => {
@@ -9,72 +9,70 @@ module.exports = (app, db) => {
     }
 
     // Check if key exists in database
-    db.get(
-      "SELECT * FROM api_keys WHERE api_key = ?",
-      [apiKey],
-      async (err, key) => {
-        if (err) return res.json({ error: "database error" });
-        if (!key) return res.json({ error: "invalid api key" });
+    db.get("SELECT * FROM api_keys WHERE api_key = ?", [apiKey], async (err, key) => {
+      if (err) return res.json({ error: "database error" });
+      if (!key) return res.json({ error: "invalid api key" });
 
-        try {
-          let provider, modelName;
+      try {
+        let provider, modelName;
 
-          if (model.startsWith("nvidia/")) {
-            provider = "nvidia";
-            modelName = model.replace("nvidia/", ""); // e.g., "mesa-gpt-3b"
-          } else if (model.startsWith("cerebras/")) {
-            provider = "cerebras";
-            modelName = model.replace("cerebras/", "");
-          } else {
-            return res.json({ error: "unsupported provider" });
-          }
+        if (model.startsWith("nvidia/")) {
+          provider = "nvidia";
+          modelName = model.replace("nvidia/", "");
+        } else if (model.startsWith("cerebras/")) {
+          provider = "cerebras";
+          modelName = model.replace("cerebras/", "");
+        } else {
+          return res.json({ error: "unsupported provider" });
+        }
 
-          let response;
+        let response;
 
-          if (provider === "nvidia") {
-            response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
-              },
-              body: JSON.stringify({
-                model: modelName,
-                messages: [{ role: "user", content: prompt }],
-              }),
-            });
-          }
-
-          if (provider === "cerebras") {
-            response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}`,
-              },
-              body: JSON.stringify({
-                model: modelName,
-                messages: [{ role: "user", content: prompt }],
-              }),
-            });
-          }
-
-          // Check for HTTP errors
-          if (!response.ok) {
-            const text = await response.text();
-            return res.json({ error: "provider error", details: text });
-          }
-
-          const data = await response.json();
-          res.json(data);
-
-        } catch (e) {
-          res.json({
-            error: "request failed",
-            details: e.message,
+        // Call NVIDIA API
+        if (provider === "nvidia") {
+          response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [{ role: "user", content: prompt }],
+            }),
           });
         }
+
+        // Call Cerebras API
+        if (provider === "cerebras") {
+          response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [{ role: "user", content: prompt }],
+            }),
+          });
+        }
+
+        // Handle HTTP errors
+        if (!response.ok) {
+          const text = await response.text();
+          return res.json({ error: "provider error", details: text });
+        }
+
+        const data = await response.json();
+        res.json(data);
+
+      } catch (e) {
+        res.json({
+          error: "request failed",
+          details: e.message,
+        });
       }
-    );
+    });
   });
 };
