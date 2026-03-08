@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 require("./createAccount")(app, db);
 require("./getKey")(app, db);
 require("./modelRouter")(app, db);
+require("./lyns")(app, db);
 
 // Add /cron route
 app.get("/cron", async (req, res) => {
@@ -60,3 +61,4 @@ app.get("/cron", async (req, res) => {
 app.listen(3000, () => {
     console.log("API running on port 3000");
 });
+
