@@ -1,9 +1,8 @@
 const { OAuth2Client } = require('google-auth-library');
-const Filter = require('bad-words');
+const leoProfanity = require('leo-profanity');
 
 const GOOGLE_CLIENT_ID = '1095022231097-m2jpnjm7fkh0k2kd46hca3p4i8b6v3k0.apps.googleusercontent.com';
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-const filter = new Filter();
 
 async function verifyGoogleToken(credential) {
   const ticket = await client.verifyIdToken({
@@ -13,9 +12,9 @@ async function verifyGoogleToken(credential) {
   return ticket.getPayload();
 }
 
-function containsProfanity(filter, ...strings) {
+function containsProfanity(...strings) {
   for (const str of strings) {
-    if (str && filter.isProfane(str)) return true;
+    if (str && leoProfanity.check(str)) return true;
   }
   return false;
 }
@@ -72,8 +71,7 @@ module.exports = function (app, db) {
     if (title.length  > 60)        return res.status(400).json({ success: false, message: 'Title too long (max 60)' });
     if (prompt.length > 8000)      return res.status(400).json({ success: false, message: 'Prompt too long (max 8000)' });
 
-    // Profanity check on all user-supplied text fields
-    if (containsProfanity(filter, title, desc, author, prompt)) {
+    if (containsProfanity(title, desc, author, prompt)) {
       return res.status(400).json({ success: false, message: 'Your submission contains inappropriate language.' });
     }
 
