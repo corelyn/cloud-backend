@@ -40,7 +40,9 @@ module.exports = function (app, db) {
       'SELECT id, title, description, author, google_name, prompt, created_at FROM lyns ORDER BY created_at DESC',
       [],
       (err, rows) => {
-        if (err) return res.status(500).json({ success: false, message: 'Failed to load Lyns' });
+        if (err) {
+          return res.status(500).json({ success: false, message: 'Failed to load Lyns' });
+        }
         res.json({ success: true, lyns: rows });
       }
     );
@@ -66,26 +68,72 @@ module.exports = function (app, db) {
       return res.status(401).json({ success: false, message: 'Google sign-in failed: ' + e.message });
     }
 
-    if (!title || !title.trim())   return res.status(400).json({ success: false, message: 'Title is required' });
-    if (!prompt || !prompt.trim()) return res.status(400).json({ success: false, message: 'Prompt is required' });
-    if (title.length  > 60)        return res.status(400).json({ success: false, message: 'Title too long (max 60)' });
-    if (prompt.length > 8000)      return res.status(400).json({ success: false, message: 'Prompt too long (max 8000)' });
-
-    if (containsProfanity(title, desc, author, prompt)) {
-      return res.status(400).json({ success: false, message: 'Your submission contains inappropriate language.' });
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Title is required' });
     }
 
-    const lynId       = id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
-    const now         = createdAt || Date.now();
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ success: false, message: 'Prompt is required' });
+    }
+
+    if (title.length > 60) {
+      return res.status(400).json({ success: false, message: 'Title too long (max 60)' });
+    }
+
+    if (prompt.length > 8000) {
+      return res.status(400).json({ success: false, message: 'Prompt too long (max 8000)' });
+    }
+
+    if (containsProfanity(title, desc, author, prompt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your submission contains inappropriate language.'
+      });
+    }
+
+    const lynId = id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    const now = createdAt || Date.now();
     const finalAuthor = (author || '').trim() || googleUser.name || '';
 
-    db.run(
-      `INSERT INTO lyns (id, title, description, author, google_name, google_email, prompt, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [lynId, title.trim(), (desc || '').trim(), finalAuthor, googleUser.name, googleUser.email, prompt.trim(), now],
-      function (err) {
-        if (err) return res.status(500).json({ success: false, message: 'Failed to save Lyn' });
-        res.json({ success: true, id: lynId });
+    // CHECK how many Lyns this user already created
+    db.get(
+      `SELECT COUNT(*) as count FROM lyns WHERE google_email = ?`,
+      [googleUser.email],
+      (err, row) => {
+
+        if (err) {
+          return res.status(500).json({ success: false, message: 'Database error' });
+        }
+
+        if (row.count >= 3) {
+          return res.status(403).json({
+            success: false,
+            message: 'You can only create up to 3 Lyns.'
+          });
+        }
+
+        // INSERT new Lyn
+        db.run(
+          `INSERT INTO lyns (id, title, description, author, google_name, google_email, prompt, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            lynId,
+            title.trim(),
+            (desc || '').trim(),
+            finalAuthor,
+            googleUser.name,
+            googleUser.email,
+            prompt.trim(),
+            now
+          ],
+          function (err) {
+            if (err) {
+              return res.status(500).json({ success: false, message: 'Failed to save Lyn' });
+            }
+
+            res.json({ success: true, id: lynId });
+          }
+        );
       }
     );
   });
