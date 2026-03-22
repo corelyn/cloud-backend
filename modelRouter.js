@@ -94,9 +94,6 @@ module.exports = (app, db) => {
         return res.status(400).json({ error: "unsupported provider" });
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-
       let response;
 
       if (provider === "nvidia") {
@@ -109,8 +106,7 @@ module.exports = (app, db) => {
           body: JSON.stringify({
             model: modelName,
             messages: [{ role: "user", content: prompt }]
-          }),
-          signal: controller.signal
+          })
         });
       } else if (provider === "cerebras") {
         response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
@@ -122,12 +118,9 @@ module.exports = (app, db) => {
           body: JSON.stringify({
             model: modelName,
             messages: [{ role: "user", content: prompt }]
-          }),
-          signal: controller.signal
+          })
         });
       }
-
-      clearTimeout(timeout);
 
       if (!response.ok) {
         const text = await response.text();
@@ -138,10 +131,6 @@ module.exports = (app, db) => {
       res.json(data);
 
     } catch (e) {
-      if (e.name === "AbortError") {
-        return res.status(504).json({ error: "request timed out" });
-      }
-
       res.status(500).json({ error: "request failed", details: e.message });
     }
   });
