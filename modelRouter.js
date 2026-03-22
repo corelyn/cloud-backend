@@ -4,30 +4,53 @@ const { promisify } = require("util");
 module.exports = (app, db) => {
   const dbGet = promisify(db.get).bind(db);
 
-  // --- Rate limiting config (per API key) ---
+  // --- Rate limiting config ---
   const rateLimits = new Map();
-  const MAX_REQUESTS = 10;       // max requests per window
-  const WINDOW_MS = 60 * 1000;   // 1 minute
+
+  const MINUTE_LIMIT = 10;
+  const MINUTE_WINDOW = 60 * 1000;
+
+  const DAILY_LIMIT = 60;
+  const DAILY_WINDOW = 24 * 60 * 60 * 1000;
 
   function checkRateLimit(apiKey) {
     const now = Date.now();
-    if (!rateLimits.has(apiKey)) rateLimits.set(apiKey, []);
-    const timestamps = rateLimits.get(apiKey);
-    const recent = timestamps.filter(ts => now - ts < WINDOW_MS);
 
-    if (recent.length >= MAX_REQUESTS) return false;
+    if (!rateLimits.has(apiKey)) {
+      rateLimits.set(apiKey, {
+        minute: [],
+        day: []
+      });
+    }
 
-    recent.push(now);
-    rateLimits.set(apiKey, recent);
-    return true;
+    const limits = rateLimits.get(apiKey);
+
+    // --- Clean old timestamps ---
+    limits.minute = limits.minute.filter(ts => now - ts < MINUTE_WINDOW);
+    limits.day = limits.day.filter(ts => now - ts < DAILY_WINDOW);
+
+    // --- Check limits ---
+    if (limits.minute.length >= MINUTE_LIMIT) {
+      return { allowed: false, error: "minute" };
+    }
+
+    if (limits.day.length >= DAILY_LIMIT) {
+      return { allowed: false, error: "day" };
+    }
+
+    // --- Record request ---
+    limits.minute.push(now);
+    limits.day.push(now);
+
+    rateLimits.set(apiKey, limits);
+
+    return { allowed: true };
   }
 
-  // --- Route handler ---
   app.post("/chat/completions", async (req, res) => {
     try {
       const { apiKey, model, prompt } = req.body;
 
-      // --- Basic validation ---
       if (!apiKey || !model || !prompt) {
         return res.status(400).json({ error: "apiKey, model, and prompt required" });
       }
@@ -36,20 +59,31 @@ module.exports = (app, db) => {
         return res.status(400).json({ error: "prompt too long (max 5000 chars)" });
       }
 
-      // --- Check API key in database ---
+      // --- Check API key ---
       const key = await dbGet("SELECT * FROM api_keys WHERE api_key = ?", [apiKey]);
       if (!key) return res.status(401).json({ error: "invalid credentials" });
 
-      // --- Rate limit per API key ---
-      if (!checkRateLimit(apiKey)) {
-        return res.status(429).json({
-          error: "rate limit exceeded",
-          limit: `${MAX_REQUESTS} requests per minute`,
-        });
+      // --- Check limits ---
+      const limitCheck = checkRateLimit(apiKey);
+
+      if (!limitCheck.allowed) {
+        if (limitCheck.error === "minute") {
+          return res.status(429).json({
+            error: "rate limit exceeded",
+            limit: `${MINUTE_LIMIT} requests per minute`
+          });
+        }
+
+        if (limitCheck.error === "day") {
+          return res.status(429).json({
+            error: "daily limit reached",
+            limit: `${DAILY_LIMIT} requests per 24 hours`
+          });
+        }
       }
 
-      // --- Determine provider ---
       let provider, modelName;
+
       if (model.startsWith("nvidia/")) {
         provider = "nvidia";
         modelName = model.replace("nvidia/", "");
@@ -60,9 +94,8 @@ module.exports = (app, db) => {
         return res.status(400).json({ error: "unsupported provider" });
       }
 
-      // --- Setup fetch timeout ---
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
       let response;
 
@@ -71,38 +104,36 @@ module.exports = (app, db) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
+            Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`
           },
           body: JSON.stringify({
             model: modelName,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: prompt }]
           }),
-          signal: controller.signal,
+          signal: controller.signal
         });
       } else if (provider === "cerebras") {
         response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}`,
+            Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}`
           },
           body: JSON.stringify({
             model: modelName,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: prompt }]
           }),
-          signal: controller.signal,
+          signal: controller.signal
         });
       }
 
       clearTimeout(timeout);
 
-      // --- Handle provider errors ---
       if (!response.ok) {
         const text = await response.text();
         return res.status(502).json({ error: "provider error", details: text });
       }
 
-      // --- Return data ---
       const data = await response.json();
       res.json(data);
 
@@ -110,6 +141,7 @@ module.exports = (app, db) => {
       if (e.name === "AbortError") {
         return res.status(504).json({ error: "request timed out" });
       }
+
       res.status(500).json({ error: "request failed", details: e.message });
     }
   });
