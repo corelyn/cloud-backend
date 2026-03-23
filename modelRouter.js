@@ -49,14 +49,20 @@ module.exports = (app, db) => {
 
   app.post("/chat/completions", async (req, res) => {
     try {
-      const { apiKey, model, prompt } = req.body;
+      const { apiKey, model, messages } = req.body;
 
-      if (!apiKey || !model || !prompt) {
-        return res.status(400).json({ error: "apiKey, model, and prompt required" });
+      if (!apiKey || !model || !messages) {
+        return res.status(400).json({ error: "apiKey, model, and messages required" });
       }
 
-      if (prompt.length > 5000) {
-        return res.status(400).json({ error: "prompt too long (max 5000 chars)" });
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "messages must be a non-empty array" });
+      }
+
+      // --- Check message length ---
+      const totalLength = messages.reduce((acc, m) => acc + (m.content?.length || 0), 0);
+      if (totalLength > 5000) {
+        return res.status(400).json({ error: "messages too long (max 5000 chars total)" });
       }
 
       // --- Check API key ---
@@ -65,21 +71,11 @@ module.exports = (app, db) => {
 
       // --- Check limits ---
       const limitCheck = checkRateLimit(apiKey);
-
       if (!limitCheck.allowed) {
-        if (limitCheck.error === "minute") {
-          return res.status(429).json({
-            error: "rate limit exceeded",
-            limit: `${MINUTE_LIMIT} requests per minute`
-          });
-        }
-
-        if (limitCheck.error === "day") {
-          return res.status(429).json({
-            error: "daily limit reached",
-            limit: `${DAILY_LIMIT} requests per 24 hours`
-          });
-        }
+        const msg = limitCheck.error === "minute"
+          ? `${MINUTE_LIMIT} requests per minute`
+          : `${DAILY_LIMIT} requests per 24 hours`;
+        return res.status(429).json({ error: "rate limit exceeded", limit: msg });
       }
 
       let provider, modelName;
@@ -94,6 +90,12 @@ module.exports = (app, db) => {
         return res.status(400).json({ error: "unsupported provider" });
       }
 
+      // --- Prepare API request payload ---
+      const apiMessages = messages.map(m => ({
+        role: m.role, // can be "system" or "user"
+        content: m.content
+      }));
+
       let response;
 
       if (provider === "nvidia") {
@@ -103,10 +105,7 @@ module.exports = (app, db) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`
           },
-          body: JSON.stringify({
-            model: modelName,
-            messages: [{ role: "user", content: prompt }]
-          })
+          body: JSON.stringify({ model: modelName, messages: apiMessages })
         });
       } else if (provider === "cerebras") {
         response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
@@ -115,10 +114,7 @@ module.exports = (app, db) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}`
           },
-          body: JSON.stringify({
-            model: modelName,
-            messages: [{ role: "user", content: prompt }]
-          })
+          body: JSON.stringify({ model: modelName, messages: apiMessages })
         });
       }
 
