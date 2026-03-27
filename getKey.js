@@ -6,7 +6,7 @@ function generateKey() {
 
 module.exports = (app, db) => {
 
-    app.post("/get-key", (req, res) => {
+    app.post("/get-key", async (req, res) => {
 
         const { token } = req.body;
 
@@ -14,43 +14,34 @@ module.exports = (app, db) => {
             return res.json({ error: "token required" });
         }
 
-        db.get(
-            "SELECT * FROM accounts WHERE token = ?",
-            [token],
-            (err, account) => {
+        const accountResult = await db.execute({
+            sql: "SELECT * FROM accounts WHERE token = ?",
+            args: [token]
+        });
 
-                if (!account) {
-                    return res.json({ error: "invalid token" });
-                }
+        if (accountResult.rows.length === 0) {
+            return res.json({ error: "invalid token" });
+        }
 
-                db.all(
-                    "SELECT * FROM api_keys WHERE account_id = ?",
-                    [account.id],
-                    (err, keys) => {
+        const account = accountResult.rows[0];
 
-                        if (keys.length >= 3) {
-                            return res.json({ error: "max 3 api keys reached" });
-                        }
+        const keysResult = await db.execute({
+            sql: "SELECT * FROM api_keys WHERE account_id = ?",
+            args: [account.id]
+        });
 
-                        const key = generateKey();
+        if (keysResult.rows.length >= 3) {
+            return res.json({ error: "max 3 api keys reached" });
+        }
 
-                        db.run(
-                            "INSERT INTO api_keys (account_id, api_key) VALUES (?, ?)",
-                            [account.id, key],
-                            () => {
+        const key = generateKey();
 
-                                res.json({
-                                    key: key
-                                });
+        await db.execute({
+            sql: "INSERT INTO api_keys (account_id, api_key) VALUES (?, ?)",
+            args: [account.id, key]
+        });
 
-                            }
-                        );
-
-                    }
-                );
-
-            }
-        );
+        res.json({ key });
 
     });
 

@@ -29,56 +29,31 @@ module.exports = (app, db) => {
             });
 
             const payload = ticket.getPayload();
-
             const email = payload.email;
             const name = payload.name;
 
             // Check if user already exists
-            db.get(
-                "SELECT token FROM accounts WHERE email = ?",
-                [email],
-                (err, row) => {
-
-                    if (err) {
-                        return res.json({ error: "database error" });
-                    }
-
-                    // Existing user
-                    if (row) {
-                        return res.json({
-                            token: row.token
-                        });
-                    }
-
-                    // Create new account
-                    const token = generateToken();
-
-                    db.run(
-                        "INSERT INTO accounts (username, email, token) VALUES (?, ?, ?)",
-                        [name, email, token],
-                        function(err) {
-
-                            if (err) {
-                                return res.json({ error: "database error" });
-                            }
-
-                            res.json({
-                                message: "account created",
-                                token: token
-                            });
-
-                        }
-                    );
-
-                }
-            );
-
-        } catch (err) {
-
-            res.json({
-                error: "invalid google token"
+            const existing = await db.execute({
+                sql: "SELECT token FROM accounts WHERE email = ?",
+                args: [email]
             });
 
+            if (existing.rows.length > 0) {
+                return res.json({ token: existing.rows[0].token });
+            }
+
+            // Create new account
+            const token = generateToken();
+
+            await db.execute({
+                sql: "INSERT INTO accounts (username, email, token) VALUES (?, ?, ?)",
+                args: [name, email, token]
+            });
+
+            res.json({ message: "account created", token });
+
+        } catch (err) {
+            res.json({ error: "invalid google token" });
         }
 
     });
