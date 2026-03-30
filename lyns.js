@@ -33,7 +33,7 @@ module.exports = function (app, db) {
         }
     });
 
-    // POST /lyns — requires Google login, only from corelyn.github.io
+    // POST /lyns — requires Google login, only from https://corelyn.ro
     app.post('/lyns', async (req, res) => {
         const origin = req.headers.origin || req.headers.referer || '';
         if (!origin.startsWith('https://corelyn.ro')) {
