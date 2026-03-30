@@ -36,7 +36,7 @@ module.exports = function (app, db) {
     // POST /lyns — requires Google login, only from corelyn.github.io
     app.post('/lyns', async (req, res) => {
         const origin = req.headers.origin || req.headers.referer || '';
-        if (!origin.startsWith('https://corelyn.github.io')) {
+        if (!origin.startsWith('https://corelyn.ro')) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
         }
 
