@@ -1,6 +1,6 @@
-import crypto from "crypto";
-import { OAuth2Client } from "google-auth-library";
-import { Resend } from "resend";
+const crypto = require("crypto");
+const { OAuth2Client } = require("google-auth-library");
+const { Resend } = require("resend");
 
 const GOOGLE_CLIENT_ID = "1095022231097-m2jpnjm7fkh0k2kd46hca3p4i8b6v3k0.apps.googleusercontent.com";
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -26,7 +26,7 @@ async function sendWelcomeEmail(name, email, token) {
         <h1>Hello ${name}!</h1>
         <p>Your Corelyn account and domain have been successfully created.</p>
         <p>Your token: <b>${token}</b></p>
-        <p>Now you can create a API key!</p>
+        <p>Now you can create an API key!</p>
         <p>Thank you for joining us!</p>
       `,
     });
@@ -37,9 +37,9 @@ async function sendWelcomeEmail(name, email, token) {
 }
 
 /**
- * Export function to setup routes
+ * Export function as CommonJS
  */
-export default (app, db) => {
+module.exports = (app, db) => {
   app.post("/google-login", async (req, res) => {
     const { credential } = req.body;
 
