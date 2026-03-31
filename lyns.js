@@ -4,6 +4,14 @@ const leoProfanity = require('leo-profanity');
 const GOOGLE_CLIENT_ID = '1095022231097-m2jpnjm7fkh0k2kd46hca3p4i8b6v3k0.apps.googleusercontent.com';
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// Allowed domains list
+const ALLOWED_ORIGINS = [
+    'https://chat.corelyn.ro',
+    'http://chat.corelyn.ro',
+    'https://corelyn.ro',
+    'http://corelyn.ro'
+];
+
 async function verifyGoogleToken(credential) {
     const ticket = await client.verifyIdToken({
         idToken: credential,
@@ -17,6 +25,11 @@ function containsProfanity(...strings) {
         if (str && leoProfanity.check(str)) return true;
     }
     return false;
+}
+
+function normalizeOrigin(origin) {
+    if (!origin) return '';
+    return origin.replace(/\/$/, ''); // Remove trailing slash
 }
 
 module.exports = function (app, db) {
@@ -33,10 +46,12 @@ module.exports = function (app, db) {
         }
     });
 
-    // POST /lyns — requires Google login, only from https://chat.corelyn.ro/
+    // POST /lyns — requires Google login, only from allowed domains
     app.post('/lyns', async (req, res) => {
-        const origin = req.headers.origin || req.headers.referer || '';
-        if (!origin.startsWith('https://chat.corelyn.ro/')) {
+        const origin = normalizeOrigin(req.headers.origin || req.headers.referer || '');
+        const isAllowed = ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed));
+
+        if (!isAllowed) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
         }
 
