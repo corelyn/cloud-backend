@@ -33,10 +33,10 @@ module.exports = function (app, db) {
         }
     });
 
-    // POST /lyns — requires Google login, only from https://corelyn.ro
+    // POST /lyns — requires Google login, only from https://chat.corelyn.ro/
     app.post('/lyns', async (req, res) => {
         const origin = req.headers.origin || req.headers.referer || '';
-        if (!origin.startsWith('https://corelyn.ro')) {
+        if (!origin.startsWith('https://chat.corelyn.ro/')) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
         }
 
