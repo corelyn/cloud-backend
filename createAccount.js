@@ -19,7 +19,7 @@ function generateToken() {
 async function sendWelcomeEmail(name, email, token) {
   try {
     await resend.emails.send({
-      from: "noreply@yourdomain.com",
+      from: "noreply@corelyn.ro",
       to: email,
       subject: "Your Corelyn account is created!",
       html: `
