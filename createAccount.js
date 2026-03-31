@@ -1,8 +1,12 @@
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
+const Resend = require("resend");
 
 const GOOGLE_CLIENT_ID = "1095022231097-m2jpnjm7fkh0k2kd46hca3p4i8b6v3k0.apps.googleusercontent.com";
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// Use environment variable for Resend API key
+const resend = new Resend(process.env.RESEND_API);
 
 function generateToken() {
     return crypto.randomBytes(16).toString("hex");
@@ -22,7 +26,6 @@ module.exports = (app, db) => {
         }
 
         try {
-
             const ticket = await client.verifyIdToken({
                 idToken: credential,
                 audience: GOOGLE_CLIENT_ID
@@ -50,10 +53,24 @@ module.exports = (app, db) => {
                 args: [name, email, token]
             });
 
-            res.json({ message: "account created", token });
+            // Send welcome email using Resend
+            await resend.emails.send({
+                from: "noreply@corelyn.ro",
+                to: email,
+                subject: "Your account/domain is created!",
+                html: `
+                    <h1>Hello ${name}!</h1>
+                    <p>Your account and domain have been successfully created.</p>
+                    <p>Your token: <b>${token}</b></p>
+                    <p>Thank you for joining us!</p>
+                `
+            });
+
+            res.json({ message: "account created and email sent", token });
 
         } catch (err) {
-            res.json({ error: "invalid google token" });
+            console.error(err);
+            res.json({ error: "invalid google token or email failed to send" });
         }
 
     });
